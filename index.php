@@ -23,6 +23,7 @@ class XMLParser{
 
     public function loadRssFile(string $path):SimpleXMLElement{
         $this->xmlFile = simplexml_load_file($path);
+        if(!$this->xmlFile) throw new Exception('Erreur lors de l\'accés au flux RSS.');
         return $this->xmlFile;
     }
 
@@ -41,8 +42,7 @@ class DatabaseUtils{
     
     public function __construct(string $bdd,string $user, string $pwd,string $bddName){
         try {
-            // $db = new PDO(`mysql:host=$bdd;dbname=$bddName;charset=utf8`, $user, $pwd);
-            $this->db = new PDO('mysql:host=localhost;dbname=article_agregator;charset=utf8', 'khalil', 'root');
+            $this->db = new PDO("mysql:host=$bdd;dbname=$bddName;charset=utf8", $user, $pwd);
         } catch (PDOException $e) {
             die('Erreur : ' . $e->getMessage());
         }
@@ -51,20 +51,10 @@ class DatabaseUtils{
     public function getArticlesFromDatabase():Array{
         $query = $this->db->prepare('SELECT a.name,a.content,s.name AS sourceName FROM article AS a INNER JOIN source AS s ON a.source_id = s.id ');
         $query->execute();
-        $results = $query->fetchAll(PDO::FETCH_ASSOC);
-        $this->setArticleInArticle($results);
+        $results = $query->fetchAll(PDO::FETCH_CLASS|PDO::FETCH_PROPS_LATE,Article::class,['','','']);
+        $this->articles = array_merge($this->articles,$results);
         return $this->articles;
     }
-
-    public function setArticleInArticle($results){
-        foreach($results as $result){
-            $name = $result['name'];
-            $content = $result['content'];
-            $sourceName = $result['sourceName'];
-            $this->articles[] = new Article($name,$sourceName,$content);
-        }
-    }
-
 
 }
 
@@ -77,10 +67,15 @@ class ArticleAgregator implements Iterator
     private $position = 0;
 
     public function appendRss(string $sourceName, string $path):void{
-        $this->xml = new XMLParser();
-        $xmlElement = $this->xml->loadRssFile($path);
-        $articles = $this->xml->getArticlesFromXml($xmlElement,$sourceName);
-        $this->setArticles($articles);
+        try{
+            $this->xml = new XMLParser();
+            $xmlElement = $this->xml->loadRssFile($path);
+            $articles = $this->xml->getArticlesFromXml($xmlElement,$sourceName);
+            $this->setArticles($articles);
+        }
+        catch(Exception $e){
+            die('Erreur : ' . $e->getMessage());
+        }
     }
 
     public function appendDatabase(string $bdd,string $user, string $pwd,string $bddName):void{
